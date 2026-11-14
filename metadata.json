@@ -1,0 +1,6 @@
+{
+  "name": "FF Creator Hub",
+  "description": "Piattaforma per piccoli creator Free Fire: guarda 25 annunci da 5 secondi al mese, collega il tuo profilo TikTok/social e ID FF, verifica automatica e gestione invio gemme tramite dashboard admin.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

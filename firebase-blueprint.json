@@ -1,0 +1,423 @@
+{
+  "entities": {
+    "CreatorProfile": {
+      "title": "CreatorProfile",
+      "description": "Public gaming/creator profile, monthly 25-ad progress, and admin per-user gem permissions.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the creator",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Creator display name",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "socialPlatform": {
+          "type": "string",
+          "description": "Primary social media platform",
+          "enum": ["TikTok", "Instagram", "YouTube", "Twitch"]
+        },
+        "socialUsername": {
+          "type": "string",
+          "description": "Social media handle (e.g. @creator_ff)",
+          "minLength": 2,
+          "maxLength": 40,
+          "pattern": "^@?[a-zA-Z0-9._]{2,35}$"
+        },
+        "freeFireId": {
+          "type": "string",
+          "description": "Free Fire numeric Player ID",
+          "minLength": 6,
+          "maxLength": 15,
+          "pattern": "^[0-9]{6,15}$"
+        },
+        "currentMonth": {
+          "type": "string",
+          "description": "Active tracking month in YYYY-MM format",
+          "minLength": 7,
+          "maxLength": 7,
+          "pattern": "^20[2-9][0-9]-(0[1-9]|1[0-2])$"
+        },
+        "adsWatchedThisMonth": {
+          "type": "integer",
+          "description": "Number of verified 5-second ads watched in the current month"
+        },
+        "autoVerified": {
+          "type": "boolean",
+          "description": "Whether automated verification checks passed"
+        },
+        "verificationStatus": {
+          "type": "string",
+          "description": "Current verification and eligibility status",
+          "enum": ["locked", "verified", "flagged"]
+        },
+        "totalGemsReceived": {
+          "type": "integer",
+          "description": "Cumulative gems sent by admin"
+        },
+        "claimsThisMonth": {
+          "type": "integer",
+          "description": "Number of payouts received in the current month"
+        },
+        "lastClaimDate": {
+          "type": "string",
+          "description": "YYYY-MM-DD of the most recent gem claim or empty string",
+          "maxLength": 10
+        },
+        "adminNote": {
+          "type": "string",
+          "description": "Optional note from admin",
+          "maxLength": 200
+        },
+        "adminOverride": {
+          "type": "string",
+          "description": "Admin permission override for when this creator can claim gems",
+          "enum": ["auto", "always_allowed", "blocked"]
+        },
+        "allowedFromDate": {
+          "type": "string",
+          "description": "Optional YYYY-MM-DD date from which admin allows this creator to claim gems",
+          "maxLength": 10
+        },
+        "customDailyGems": {
+          "type": "integer",
+          "description": "Optional custom gem amount per daily claim set by admin (0 = use global default)"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last update timestamp"
+        }
+      },
+      "required": [
+        "uid",
+        "displayName",
+        "socialPlatform",
+        "socialUsername",
+        "freeFireId",
+        "currentMonth",
+        "adsWatchedThisMonth",
+        "autoVerified",
+        "verificationStatus",
+        "totalGemsReceived",
+        "claimsThisMonth",
+        "lastClaimDate",
+        "adminNote",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "CreatorPrivate": {
+      "title": "CreatorPrivate",
+      "description": "Isolated PII document storing the creator email address.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "createdAt", "updatedAt"]
+    },
+    "AdViewLog": {
+      "title": "AdViewLog",
+      "description": "Verified 5-second ad view audit record.",
+      "type": "object",
+      "properties": {
+        "creatorUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "monthKey": {
+          "type": "string",
+          "minLength": 7,
+          "maxLength": 7,
+          "pattern": "^20[2-9][0-9]-(0[1-9]|1[0-2])$"
+        },
+        "campaignId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "campaignTitle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "durationSeconds": {
+          "type": "integer"
+        },
+        "verified": {
+          "type": "boolean"
+        },
+        "watchedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "creatorUid",
+        "monthKey",
+        "campaignId",
+        "campaignTitle",
+        "durationSeconds",
+        "verified",
+        "watchedAt"
+      ]
+    },
+    "GemRequest": {
+      "title": "GemRequest",
+      "description": "Creator reward payout request queued for admin decision and processing.",
+      "type": "object",
+      "properties": {
+        "creatorUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "creatorName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "socialPlatform": {
+          "type": "string",
+          "enum": ["TikTok", "Instagram", "YouTube", "Twitch"]
+        },
+        "socialUsername": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 40
+        },
+        "freeFireId": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 15,
+          "pattern": "^[0-9]{6,15}$"
+        },
+        "monthKey": {
+          "type": "string",
+          "minLength": 7,
+          "maxLength": 7,
+          "pattern": "^20[2-9][0-9]-(0[1-9]|1[0-2])$"
+        },
+        "requestDate": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^20[2-9][0-9]-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+        },
+        "rewardType": {
+          "type": "string",
+          "enum": ["daily_100", "monthly_10", "custom"]
+        },
+        "gemsAmount": {
+          "type": "integer"
+        },
+        "adsWatchedSnapshot": {
+          "type": "integer"
+        },
+        "autoCheckPassed": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "sent", "rejected"]
+        },
+        "adminNote": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "creatorUid",
+        "creatorName",
+        "socialPlatform",
+        "socialUsername",
+        "freeFireId",
+        "monthKey",
+        "requestDate",
+        "rewardType",
+        "gemsAmount",
+        "adsWatchedSnapshot",
+        "autoCheckPassed",
+        "status",
+        "adminNote",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ProgramSettings": {
+      "title": "ProgramSettings",
+      "description": "Global reward program rules and payout schedule configured by admin.",
+      "type": "object",
+      "properties": {
+        "requiredAdsPerMonth": {
+          "type": "integer"
+        },
+        "adDurationSeconds": {
+          "type": "integer"
+        },
+        "dailyGemsAmount": {
+          "type": "integer"
+        },
+        "monthlyBonusGems": {
+          "type": "integer"
+        },
+        "monthlyMaxClaims": {
+          "type": "integer"
+        },
+        "programActive": {
+          "type": "boolean"
+        },
+        "claimsWindowOpen": {
+          "type": "boolean"
+        },
+        "payoutScheduleMode": {
+          "type": "string",
+          "enum": ["anytime", "weekdays", "month_days"]
+        },
+        "allowedWeekdays": {
+          "type": "array"
+        },
+        "allowedMonthDays": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "scheduleNote": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "requiredAdsPerMonth",
+        "adDurationSeconds",
+        "dailyGemsAmount",
+        "monthlyBonusGems",
+        "monthlyMaxClaims",
+        "programActive",
+        "updatedAt"
+      ]
+    },
+    "AdCampaign": {
+      "title": "AdCampaign",
+      "description": "Sponsored 5-second ad campaign displayed to creators.",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "sponsor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "imageUrl": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "durationSeconds": {
+          "type": "integer"
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "title",
+        "sponsor",
+        "description",
+        "imageUrl",
+        "durationSeconds",
+        "active",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/creators/{creatorId}": {
+      "schema": { "$ref": "#/entities/CreatorProfile" },
+      "description": "Creator gaming profiles, monthly 25-ad progress, and admin overrides."
+    },
+    "/creator_private/{creatorId}": {
+      "schema": { "$ref": "#/entities/CreatorPrivate" },
+      "description": "Isolated PII email records for creators."
+    },
+    "/ad_views/{viewId}": {
+      "schema": { "$ref": "#/entities/AdViewLog" },
+      "description": "Verified 5-second ad watch audit trail."
+    },
+    "/gem_requests/{requestId}": {
+      "schema": { "$ref": "#/entities/GemRequest" },
+      "description": "Gem payout requests queued for admin processing."
+    },
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/ProgramSettings" },
+      "description": "Global reward program and schedule parameters."
+    },
+    "/campaigns/{campaignId}": {
+      "schema": { "$ref": "#/entities/AdCampaign" },
+      "description": "Active 5-second ad creatives shown in the creator viewer."
+    }
+  }
+}

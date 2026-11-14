@@ -1,0 +1,405 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global safety net: default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- GLOBAL HARDENED HELPERS ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedEmail() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isVerifiedEmail() && (
+        request.auth.token.email.lower() == '4p.l.a.y00000@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isOwner(userId) {
+      return isVerifiedEmail() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function getRequiredAds() {
+      return exists(/databases/$(database)/documents/settings/program)
+        ? get(/databases/$(database)/documents/settings/program).data.requiredAdsPerMonth
+        : 25;
+    }
+
+    function isClaimsWindowOpen() {
+      return !exists(/databases/$(database)/documents/settings/program) ||
+        !('claimsWindowOpen' in get(/databases/$(database)/documents/settings/program).data) ||
+        get(/databases/$(database)/documents/settings/program).data.claimsWindowOpen == true;
+    }
+
+    // --- ENTITY VALIDATION BLUEPRINTS ---
+    function isValidCreatorProfile(data) {
+      return data.keys().hasAll([
+          'uid', 'displayName', 'socialPlatform', 'socialUsername', 'freeFireId',
+          'currentMonth', 'adsWatchedThisMonth', 'autoVerified', 'verificationStatus',
+          'totalGemsReceived', 'claimsThisMonth', 'lastClaimDate', 'adminNote',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'displayName', 'socialPlatform', 'socialUsername', 'freeFireId',
+          'currentMonth', 'adsWatchedThisMonth', 'autoVerified', 'verificationStatus',
+          'totalGemsReceived', 'claimsThisMonth', 'lastClaimDate', 'adminNote',
+          'adminOverride', 'allowedFromDate', 'customDailyGems',
+          'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.uid)
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80
+        && data.socialPlatform in ['TikTok', 'Instagram', 'YouTube', 'Twitch']
+        && data.socialUsername is string && data.socialUsername.size() >= 2 && data.socialUsername.size() <= 40
+        && data.socialUsername.matches('^@?[a-zA-Z0-9._]{2,35}$')
+        && data.freeFireId is string && data.freeFireId.size() >= 6 && data.freeFireId.size() <= 15
+        && data.freeFireId.matches('^[0-9]{6,15}$')
+        && data.currentMonth is string && data.currentMonth.size() == 7
+        && data.currentMonth.matches('^20[2-9][0-9]-(0[1-9]|1[0-2])$')
+        && data.adsWatchedThisMonth is int && data.adsWatchedThisMonth >= 0 && data.adsWatchedThisMonth <= 1000
+        && data.autoVerified is bool
+        && data.verificationStatus in ['locked', 'verified', 'flagged']
+        && data.totalGemsReceived is int && data.totalGemsReceived >= 0 && data.totalGemsReceived <= 10000000
+        && data.claimsThisMonth is int && data.claimsThisMonth >= 0 && data.claimsThisMonth <= 100
+        && data.lastClaimDate is string && data.lastClaimDate.size() <= 10
+        && data.adminNote is string && data.adminNote.size() <= 200
+        && (!('adminOverride' in data) || data.adminOverride in ['auto', 'always_allowed', 'blocked'])
+        && (!('allowedFromDate' in data) || (data.allowedFromDate is string && data.allowedFromDate.size() <= 10))
+        && (!('customDailyGems' in data) || (data.customDailyGems is int && data.customDailyGems >= 0 && data.customDailyGems <= 10000))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCreatorPrivate(data) {
+      return data.keys().hasAll(['uid', 'email', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'createdAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 160
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAdViewLog(data) {
+      return data.keys().hasAll([
+          'creatorUid', 'monthKey', 'campaignId', 'campaignTitle',
+          'durationSeconds', 'verified', 'watchedAt'
+        ])
+        && data.keys().hasOnly([
+          'creatorUid', 'monthKey', 'campaignId', 'campaignTitle',
+          'durationSeconds', 'verified', 'watchedAt'
+        ])
+        && isValidId(data.creatorUid)
+        && data.monthKey is string && data.monthKey.size() == 7
+        && data.monthKey.matches('^20[2-9][0-9]-(0[1-9]|1[0-2])$')
+        && isValidId(data.campaignId)
+        && data.campaignTitle is string && data.campaignTitle.size() >= 1 && data.campaignTitle.size() <= 100
+        && data.durationSeconds is int && data.durationSeconds >= 5 && data.durationSeconds <= 120
+        && data.verified is bool
+        && data.watchedAt is timestamp;
+    }
+
+    function isValidGemRequest(data) {
+      return data.keys().hasAll([
+          'creatorUid', 'creatorName', 'socialPlatform', 'socialUsername',
+          'freeFireId', 'monthKey', 'requestDate', 'rewardType', 'gemsAmount',
+          'adsWatchedSnapshot', 'autoCheckPassed', 'status', 'adminNote',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'creatorUid', 'creatorName', 'socialPlatform', 'socialUsername',
+          'freeFireId', 'monthKey', 'requestDate', 'rewardType', 'gemsAmount',
+          'adsWatchedSnapshot', 'autoCheckPassed', 'status', 'adminNote',
+          'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.creatorUid)
+        && data.creatorName is string && data.creatorName.size() >= 1 && data.creatorName.size() <= 80
+        && data.socialPlatform in ['TikTok', 'Instagram', 'YouTube', 'Twitch']
+        && data.socialUsername is string && data.socialUsername.size() >= 2 && data.socialUsername.size() <= 40
+        && data.freeFireId is string && data.freeFireId.size() >= 6 && data.freeFireId.size() <= 15
+        && data.freeFireId.matches('^[0-9]{6,15}$')
+        && data.monthKey is string && data.monthKey.size() == 7
+        && data.monthKey.matches('^20[2-9][0-9]-(0[1-9]|1[0-2])$')
+        && data.requestDate is string && data.requestDate.size() == 10
+        && data.requestDate.matches('^20[2-9][0-9]-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$')
+        && data.rewardType in ['daily_100', 'monthly_10', 'custom']
+        && data.gemsAmount is int && data.gemsAmount >= 1 && data.gemsAmount <= 10000
+        && data.adsWatchedSnapshot is int && data.adsWatchedSnapshot >= 0 && data.adsWatchedSnapshot <= 1000
+        && data.autoCheckPassed is bool
+        && data.status in ['pending', 'sent', 'rejected']
+        && data.adminNote is string && data.adminNote.size() <= 200
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidProgramSettings(data) {
+      return data.keys().hasAll([
+          'requiredAdsPerMonth', 'adDurationSeconds', 'dailyGemsAmount',
+          'monthlyBonusGems', 'monthlyMaxClaims', 'programActive', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'requiredAdsPerMonth', 'adDurationSeconds', 'dailyGemsAmount',
+          'monthlyBonusGems', 'monthlyMaxClaims', 'programActive',
+          'claimsWindowOpen', 'payoutScheduleMode', 'allowedWeekdays',
+          'allowedMonthDays', 'scheduleNote', 'updatedAt'
+        ])
+        && data.requiredAdsPerMonth is int && data.requiredAdsPerMonth >= 1 && data.requiredAdsPerMonth <= 200
+        && data.adDurationSeconds is int && data.adDurationSeconds >= 3 && data.adDurationSeconds <= 60
+        && data.dailyGemsAmount is int && data.dailyGemsAmount >= 1 && data.dailyGemsAmount <= 10000
+        && data.monthlyBonusGems is int && data.monthlyBonusGems >= 0 && data.monthlyBonusGems <= 10000
+        && data.monthlyMaxClaims is int && data.monthlyMaxClaims >= 1 && data.monthlyMaxClaims <= 31
+        && data.programActive is bool
+        && (!('claimsWindowOpen' in data) || data.claimsWindowOpen is bool)
+        && (!('payoutScheduleMode' in data) || data.payoutScheduleMode in ['anytime', 'weekdays', 'month_days'])
+        && (!('allowedWeekdays' in data) || (
+          data.allowedWeekdays is list &&
+          data.allowedWeekdays.size() <= 7 &&
+          (data.allowedWeekdays.size() == 0 || data.allowedWeekdays[0] is int)
+        ))
+        && (!('allowedMonthDays' in data) || (data.allowedMonthDays is string && data.allowedMonthDays.size() <= 100))
+        && (!('scheduleNote' in data) || (data.scheduleNote is string && data.scheduleNote.size() <= 200))
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAdCampaign(data) {
+      return data.keys().hasAll([
+          'title', 'sponsor', 'description', 'imageUrl',
+          'durationSeconds', 'active', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'title', 'sponsor', 'description', 'imageUrl',
+          'durationSeconds', 'active', 'createdAt', 'updatedAt'
+        ])
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 100
+        && data.sponsor is string && data.sponsor.size() >= 1 && data.sponsor.size() <= 60
+        && data.description is string && data.description.size() >= 1 && data.description.size() <= 240
+        && data.imageUrl is string && data.imageUrl.size() >= 1 && data.imageUrl.size() <= 300
+        && data.durationSeconds is int && data.durationSeconds >= 5 && data.durationSeconds <= 60
+        && data.active is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // --- COLLECTION RULES ---
+
+    // 1. /creators/{creatorId}
+    match /creators/{creatorId} {
+      allow get: if isValidId(creatorId) && (isOwner(creatorId) || isAdmin());
+      allow list: if isAdmin() || (isVerifiedEmail() && resource.data.uid == request.auth.uid);
+
+      allow create: if isVerifiedEmail()
+        && isValidId(creatorId)
+        && isValidCreatorProfile(incoming())
+        && incoming().uid == request.auth.uid
+        && creatorId == request.auth.uid
+        && incoming().adsWatchedThisMonth == 0
+        && incoming().autoVerified == false
+        && incoming().verificationStatus == 'locked'
+        && incoming().totalGemsReceived == 0
+        && incoming().claimsThisMonth == 0
+        && incoming().lastClaimDate == ''
+        && incoming().adminNote == ''
+        && (!('adminOverride' in incoming()) || incoming().adminOverride == 'auto')
+        && (!('allowedFromDate' in incoming()) || incoming().allowedFromDate == '')
+        && (!('customDailyGems' in incoming()) || incoming().customDailyGems == 0)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isVerifiedEmail()
+        && isValidId(creatorId)
+        && isValidCreatorProfile(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (
+            isOwner(creatorId)
+            && existing().verificationStatus != 'flagged'
+            && (!incoming().autoVerified || incoming().adsWatchedThisMonth >= getRequiredAds())
+            && (
+              // Action: Creator edits social handle or Free Fire ID
+              (
+                incoming().diff(existing()).affectedKeys().hasOnly([
+                  'displayName', 'socialPlatform', 'socialUsername', 'freeFireId',
+                  'autoVerified', 'verificationStatus', 'updatedAt'
+                ])
+                && incoming().verificationStatus in ['locked', 'verified']
+              ) ||
+              // Action: Creator completes a verified 5-second ad view
+              (
+                incoming().diff(existing()).affectedKeys().hasOnly([
+                  'currentMonth', 'adsWatchedThisMonth', 'claimsThisMonth',
+                  'autoVerified', 'verificationStatus', 'updatedAt'
+                ])
+                && incoming().verificationStatus in ['locked', 'verified']
+                && (
+                  (
+                    incoming().currentMonth == existing().currentMonth
+                    && incoming().claimsThisMonth == existing().claimsThisMonth
+                    && incoming().adsWatchedThisMonth == existing().adsWatchedThisMonth + 1
+                    && (existing().adsWatchedThisMonth == 0 || request.time >= existing().updatedAt + duration.value(4, 's'))
+                  ) ||
+                  (
+                    incoming().currentMonth != existing().currentMonth
+                    && incoming().adsWatchedThisMonth == 1
+                    && incoming().claimsThisMonth == 0
+                  )
+                )
+              ) ||
+              // Action: Month rollover reset
+              (
+                incoming().diff(existing()).affectedKeys().hasOnly([
+                  'currentMonth', 'adsWatchedThisMonth', 'claimsThisMonth',
+                  'autoVerified', 'verificationStatus', 'updatedAt'
+                ])
+                && incoming().currentMonth != existing().currentMonth
+                && incoming().adsWatchedThisMonth == 0
+                && incoming().claimsThisMonth == 0
+                && incoming().autoVerified == false
+                && incoming().verificationStatus == 'locked'
+              )
+            )
+          )
+        );
+
+      allow delete: if isValidId(creatorId) && isAdmin();
+    }
+
+    // 2. /creator_private/{creatorId} (Strict PII Isolation)
+    match /creator_private/{creatorId} {
+      allow get: if isValidId(creatorId) && (isOwner(creatorId) || isAdmin());
+      allow list: if isAdmin() || (isVerifiedEmail() && resource.data.uid == request.auth.uid);
+
+      allow create: if isVerifiedEmail()
+        && isValidId(creatorId)
+        && isValidCreatorPrivate(incoming())
+        && incoming().uid == request.auth.uid
+        && creatorId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isVerifiedEmail()
+        && isValidId(creatorId)
+        && isValidCreatorPrivate(incoming())
+        && (isOwner(creatorId) || isAdmin())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+
+      allow delete: if isValidId(creatorId) && isAdmin();
+    }
+
+    // 3. /ad_views/{viewId}
+    match /ad_views/{viewId} {
+      allow get: if isValidId(viewId) && (isAdmin() || (isVerifiedEmail() && existing().creatorUid == request.auth.uid));
+      allow list: if isAdmin() || (isVerifiedEmail() && resource.data.creatorUid == request.auth.uid);
+
+      allow create: if isVerifiedEmail()
+        && isValidId(viewId)
+        && isValidAdViewLog(incoming())
+        && incoming().creatorUid == request.auth.uid
+        && incoming().durationSeconds >= 5
+        && incoming().verified == true
+        && incoming().watchedAt == request.time;
+
+      allow update, delete: if isValidId(viewId) && isAdmin();
+    }
+
+    // 4. /gem_requests/{requestId}
+    match /gem_requests/{requestId} {
+      allow get: if isValidId(requestId) && (isAdmin() || (isVerifiedEmail() && existing().creatorUid == request.auth.uid));
+      allow list: if isAdmin() || (isVerifiedEmail() && resource.data.creatorUid == request.auth.uid);
+
+      // Creator can create if window is open AND not blocked AND (admin always_allowed OR 25+ verified ads)
+      allow create: if isVerifiedEmail()
+        && isValidId(requestId)
+        && isValidGemRequest(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (
+            isClaimsWindowOpen()
+            && incoming().creatorUid == request.auth.uid
+            && incoming().status == 'pending'
+            && incoming().adminNote == ''
+            && exists(/databases/$(database)/documents/creators/$(request.auth.uid))
+            && get(/databases/$(database)/documents/creators/$(request.auth.uid)).data.verificationStatus != 'flagged'
+            && (!('adminOverride' in get(/databases/$(database)/documents/creators/$(request.auth.uid)).data) ||
+                get(/databases/$(database)/documents/creators/$(request.auth.uid)).data.adminOverride != 'blocked')
+            && (
+              (
+                'adminOverride' in get(/databases/$(database)/documents/creators/$(request.auth.uid)).data &&
+                get(/databases/$(database)/documents/creators/$(request.auth.uid)).data.adminOverride == 'always_allowed'
+              ) ||
+              (
+                incoming().autoCheckPassed == true
+                && incoming().adsWatchedSnapshot >= getRequiredAds()
+                && get(/databases/$(database)/documents/creators/$(request.auth.uid)).data.adsWatchedThisMonth >= getRequiredAds()
+                && get(/databases/$(database)/documents/creators/$(request.auth.uid)).data.autoVerified == true
+                && get(/databases/$(database)/documents/creators/$(request.auth.uid)).data.verificationStatus == 'verified'
+              )
+            )
+          )
+        );
+
+      // Admin can edit status, note, or gemsAmount freely
+      allow update: if isAdmin()
+        && isValidId(requestId)
+        && isValidGemRequest(incoming())
+        && incoming().creatorUid == existing().creatorUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'adminNote', 'gemsAmount', 'updatedAt']);
+
+      allow delete: if isValidId(requestId) && isAdmin();
+    }
+
+    // 5. /settings/{settingId}
+    match /settings/{settingId} {
+      allow get: if isValidId(settingId) && isSignedIn();
+      allow list: if isAdmin();
+      allow create, update: if isAdmin()
+        && isValidId(settingId)
+        && isValidProgramSettings(incoming())
+        && incoming().updatedAt == request.time;
+      allow delete: if isValidId(settingId) && isAdmin();
+    }
+
+    // 6. /campaigns/{campaignId}
+    match /campaigns/{campaignId} {
+      allow get: if isValidId(campaignId) && isSignedIn();
+      allow list: if isAdmin() || (isSignedIn() && resource.data.active == true);
+      allow create: if isAdmin()
+        && isValidId(campaignId)
+        && isValidAdCampaign(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isAdmin()
+        && isValidId(campaignId)
+        && isValidAdCampaign(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+      allow delete: if isValidId(campaignId) && isAdmin();
+    }
+  }
+}
